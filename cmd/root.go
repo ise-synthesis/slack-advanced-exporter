@@ -21,10 +21,8 @@ Version: 0.4.0`,
 
 func init() {
 	rootCmd.PersistentFlags().StringVarP(&inputArchive, "input-archive", "i", "", "the path to the Slack export archive which you wish to augment")
-	rootCmd.PersistentFlags().StringVarP(&outputArchive, "output-archive", "o", "", "the path to which you would like the output archive to be written")
 	rootCmd.PersistentFlags().BoolVarP(&verbose, "verbose", "v", false, "print detailed information about what is happening while the command is executing")
 	rootCmd.MarkPersistentFlagRequired("input-archive")
-	rootCmd.MarkPersistentFlagRequired("output-archive")
 	rootCmd.AddCommand(fetchAttachmentsCmd)
 	rootCmd.AddCommand(fetchEmailsCmd)
 }

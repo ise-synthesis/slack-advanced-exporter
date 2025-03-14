@@ -11,6 +11,7 @@ import (
 	"net/http"
 	"os"
 	"strings"
+	"path/filepath"
 
 	"github.com/spf13/cobra"
 )
@@ -38,20 +39,18 @@ func fetchAttachments(cmd *cobra.Command, args []string) error {
 	}
 	defer r.Close()
 
-	// Open the output archive.
-	f, err := os.Create(outputArchive)
-	if err != nil {
-		fmt.Printf("Could not open the output archive for writing: %s\n\n%s", outputArchive, err)
-		os.Exit(1)
-	}
-	defer f.Close()
-
-	// Create a zip writer on the output archive.
-	w := zip.NewWriter(f)
-
 	// Run through all the files in the input archive.
 	for _, file := range r.File {
 		verbosePrintln(fmt.Sprintf("Processing file: %s\n", file.Name))
+
+		if file.FileInfo().IsDir() {
+			err = os.MkdirAll(file.Name, 0755)
+			if err != nil {
+				fmt.Printf("Failed to create dir: %s\n%s\n", file.Name, err)
+				os.Exit(1)
+			}
+			continue
+		}
 
 		// Open the file from the input archive.
 		inReader, err := file.Open()
@@ -66,22 +65,24 @@ func fetchAttachments(cmd *cobra.Command, args []string) error {
 			fmt.Printf("Failed to read file in input archive: %s\n\n%s", file.Name, err)
 		}
 
-		// Now write this file to the output archive.
-		outFile, err := w.Create(file.Name)
+		outFile, err := os.Create(file.Name)
 		if err != nil {
-			fmt.Printf("Failed to create file in output archive: %s\n\n%s", file.Name, err)
+			fmt.Printf("Failed to create file: %s\n%s\n", file.Name, err)
 			os.Exit(1)
 		}
 		_, err = outFile.Write(inBuf)
 		if err != nil {
-			fmt.Printf("Failed to write file in output archive: %s\n\n%s", file.Name, err)
+			fmt.Printf("Failed to write file: %s\n%s\n", file.Name, err)
+			os.Exit(1)
 		}
+
+		outFile.Close()
 
 		// Check if the file name matches the pattern for files we need to parse.
 		splits := strings.Split(file.Name, "/")
 		if len(splits) == 2 && !strings.HasPrefix(splits[0], "__") && strings.HasSuffix(splits[1], ".json") {
 			// Parse this file.
-			err = processChannelFile(w, file, inBuf, attachmentsApiToken)
+			err = processChannelFile(file, inBuf, attachmentsApiToken)
 			if err != nil {
 				fmt.Printf("%s", err)
 				os.Exit(1)
@@ -89,16 +90,10 @@ func fetchAttachments(cmd *cobra.Command, args []string) error {
 		}
 	}
 
-	// Close the output zip writer.
-	err = w.Close()
-	if err != nil {
-		fmt.Printf("Failed to close the output archive.\n\n%s", err)
-	}
-
 	return nil
 }
 
-func processChannelFile(w *zip.Writer, file *zip.File, inBuf []byte, token string) error {
+func processChannelFile(file *zip.File, inBuf []byte, token string) error {
 	verbosePrintln("This is a 'channels' file. Examining it's contents for attachments.")
 
 	// Parse the JSON of the file.
@@ -147,10 +142,9 @@ func processChannelFile(w *zip.Writer, file *zip.File, inBuf []byte, token strin
 			// Build the output file path.
 			outputPath := "__uploads/" + file.Id + "/" + file.Name
 
-			// Create the file in the zip output file.
-			outFile, err := w.Create(outputPath)
-			if err != nil {
-				log.Print("++++++ Failed to create output file in output archive: " + outputPath + "\n\n" + err.Error() + "\n")
+			_, err := os.Stat(outputPath)
+			if err == nil {
+				log.Printf("Skip: %s\n", outputPath)
 				continue
 			}
 
@@ -173,13 +167,25 @@ func processChannelFile(w *zip.Writer, file *zip.File, inBuf []byte, token strin
 			defer response.Body.Close()
 
 			// Save the file to the output zip file.
+			err = os.MkdirAll(filepath.Dir(outputPath), 0755)
+			if err != nil {
+				log.Printf("Failed to create dir: %s\n%s\n", filepath.Dir(outputPath), err)
+				os.Exit(1)
+			}
+			outFile, err := os.Create(outputPath)
+			if err != nil {
+				log.Printf("Failed to create file: %s\n%s\n", outputPath, err)
+				os.Exit(1)
+			}
 			_, err = io.Copy(outFile, response.Body)
 			if err != nil {
 				log.Print("++++++ Failed to write the downloaded file to the output archive: " + downloadUrl + "\n\n" + err.Error() + "\n")
+				os.Exit(1)
 			}
+			outFile.Close()
 
 			// Success at last.
-			fmt.Printf("Downloaded attachment into output archive: %s.\n", file.Id)
+			fmt.Printf("Downloaded attachment: %s.\n", outputPath)
 		}
 	}
 

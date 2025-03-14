@@ -24,6 +24,8 @@ var fetchEmailsCmd = &cobra.Command{
 }
 
 func init() {
+	fetchEmailsCmd.PersistentFlags().StringVarP(&outputArchive, "output-archive", "o", "", "the path to which you would like the output archive to be written")
+	fetchEmailsCmd.MarkPersistentFlagRequired("output-archive")
 	fetchEmailsCmd.PersistentFlags().StringVar(&emailsApiToken, "api-token", "", "Slack API token. Can be obtained here: https://api.slack.com/docs/oauth-test-tokens")
 	fetchEmailsCmd.MarkPersistentFlagRequired("api-token")
 }
